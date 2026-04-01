@@ -1,170 +1,140 @@
 import { useEffect, useRef } from 'react';
 
-interface Blob {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  radius: number;
-  targetX: number;
-  targetY: number;
-}
-
-const FluidBackground = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const mouseRef = useRef({ x: 0.5, y: 0.5, active: false });
-  const blobsRef = useRef<Blob[]>([]);
-  const animRef = useRef<number>(0);
+/**
+ * SVG displacement filter that warps the entire page like liquid.
+ * - feTurbulence generates fractal noise
+ * - feOffset slides the noise around so it flows organically
+ * - feDisplacementMap uses that flowing noise to distort SourceGraphic
+ * - Mouse movement speed increases distortion intensity
+ */
+const LiquidDistortion = () => {
+  const offsetRef = useRef<SVGFEOffsetElement>(null);
+  const dispRef = useRef<SVGFEDisplacementMapElement>(null);
+  const frameRef = useRef(0);
+  const scaleRef = useRef(3);
+  const targetScaleRef = useRef(3);
+  const lastMoveRef = useRef(0);
+  const lastX = useRef(0);
+  const lastY = useRef(0);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Resize
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-    resize();
-    window.addEventListener('resize', resize);
-
-    // Init blobs
-    const NUM_BLOBS = 6;
-    blobsRef.current = Array.from({ length: NUM_BLOBS }, () => ({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      vx: (Math.random() - 0.5) * 0.5,
-      vy: (Math.random() - 0.5) * 0.5,
-      radius: 120 + Math.random() * 180,
-      targetX: Math.random() * canvas.width,
-      targetY: Math.random() * canvas.height,
-    }));
-
-    // Mouse handlers
-    const onMouseMove = (e: MouseEvent) => {
-      mouseRef.current.x = e.clientX / window.innerWidth;
-      mouseRef.current.y = e.clientY / window.innerHeight;
-      mouseRef.current.active = true;
-    };
-    const onMouseLeave = () => {
-      mouseRef.current.active = false;
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      mouseRef.current.x = e.touches[0].clientX / window.innerWidth;
-      mouseRef.current.y = e.touches[0].clientY / window.innerHeight;
-      mouseRef.current.active = true;
-    };
-    const onTouchEnd = () => {
-      mouseRef.current.active = false;
-    };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseleave', onMouseLeave);
-    window.addEventListener('touchmove', onTouchMove);
-    window.addEventListener('touchend', onTouchEnd);
-
     let time = 0;
 
     const animate = () => {
-      time += 0.003;
-      const w = canvas.width;
-      const h = canvas.height;
-      const mouse = mouseRef.current;
+      time += 0.012;
 
-      // Clear
-      ctx.clearRect(0, 0, w, h);
-
-      // Update blobs
-      const blobs = blobsRef.current;
-      for (let i = 0; i < blobs.length; i++) {
-        const blob = blobs[i];
-
-        // Organic wandering
-        blob.targetX += Math.sin(time * 1.2 + i * 2.1) * 0.8;
-        blob.targetY += Math.cos(time * 0.9 + i * 1.7) * 0.8;
-
-        // Keep in bounds
-        if (blob.targetX < -100) blob.targetX = w + 100;
-        if (blob.targetX > w + 100) blob.targetX = -100;
-        if (blob.targetY < -100) blob.targetY = h + 100;
-        if (blob.targetY > h + 100) blob.targetY = -100;
-
-        // Mouse attraction
-        if (mouse.active) {
-          const mx = mouse.x * w;
-          const my = mouse.y * h;
-          const dx = mx - blob.x;
-          const dy = my - blob.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const force = Math.max(0, 1 - dist / 500) * 0.8;
-          blob.vx += dx * force * 0.001;
-          blob.vy += dy * force * 0.001;
-        }
-
-        // Move toward target
-        blob.vx += (blob.targetX - blob.x) * 0.0003;
-        blob.vy += (blob.targetY - blob.y) * 0.0003;
-
-        // Damping
-        blob.vx *= 0.985;
-        blob.vy *= 0.985;
-
-        blob.x += blob.vx;
-        blob.y += blob.vy;
-
-        // Pulsing radius
-        const pulseRadius = blob.radius + Math.sin(time * 2 + i * 1.3) * 20;
-
-        // Draw blob
-        const gradient = ctx.createRadialGradient(blob.x, blob.y, 0, blob.x, blob.y, pulseRadius);
-        gradient.addColorStop(0, 'rgba(0, 255, 212, 0.06)');
-        gradient.addColorStop(0.4, 'rgba(0, 255, 212, 0.025)');
-        gradient.addColorStop(1, 'rgba(0, 255, 212, 0)');
-
-        ctx.beginPath();
-        ctx.arc(blob.x, blob.y, pulseRadius, 0, Math.PI * 2);
-        ctx.fillStyle = gradient;
-        ctx.fill();
+      const offset = offsetRef.current;
+      const disp = dispRef.current;
+      if (!offset || !disp) {
+        frameRef.current = requestAnimationFrame(animate);
+        return;
       }
 
-      // Draw a brighter glow near mouse when active
-      if (mouse.active) {
-        const mx = mouse.x * w;
-        const my = mouse.y * h;
-        const mouseGlow = ctx.createRadialGradient(mx, my, 0, mx, my, 200);
-        mouseGlow.addColorStop(0, 'rgba(0, 255, 212, 0.07)');
-        mouseGlow.addColorStop(0.5, 'rgba(0, 255, 212, 0.02)');
-        mouseGlow.addColorStop(1, 'rgba(0, 255, 212, 0)');
-        ctx.beginPath();
-        ctx.arc(mx, my, 200, 0, Math.PI * 2);
-        ctx.fillStyle = mouseGlow;
-        ctx.fill();
+      // Flow the noise pattern in a lissajous-like path
+      const dx = Math.sin(time * 0.23) * 50 + Math.cos(time * 0.61) * 25;
+      const dy = Math.cos(time * 0.17) * 40 + Math.sin(time * 0.43) * 20;
+      offset.setAttribute('dx', String(dx));
+      offset.setAttribute('dy', String(dy));
+
+      // Decay distortion when mouse stops
+      const now = Date.now();
+      if (now - lastMoveRef.current > 120) {
+        targetScaleRef.current = 3; // subtle baseline wobble
       }
 
-      animRef.current = requestAnimationFrame(animate);
+      // Smooth interpolation toward target
+      scaleRef.current += (targetScaleRef.current - scaleRef.current) * 0.05;
+      disp.setAttribute('scale', String(scaleRef.current));
+
+      frameRef.current = requestAnimationFrame(animate);
     };
 
-    animRef.current = requestAnimationFrame(animate);
+    const onMouseMove = (e: MouseEvent) => {
+      const dx = e.clientX - lastX.current;
+      const dy = e.clientY - lastY.current;
+      const speed = Math.sqrt(dx * dx + dy * dy);
+      lastX.current = e.clientX;
+      lastY.current = e.clientY;
+
+      // Scale distortion with mouse velocity — fast = more warp
+      const clampedSpeed = Math.min(speed, 60);
+      targetScaleRef.current = 3 + clampedSpeed * 0.5;
+      lastMoveRef.current = Date.now();
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      const dx = touch.clientX - lastX.current;
+      const dy = touch.clientY - lastY.current;
+      const speed = Math.sqrt(dx * dx + dy * dy);
+      lastX.current = touch.clientX;
+      lastY.current = touch.clientY;
+
+      const clampedSpeed = Math.min(speed, 60);
+      targetScaleRef.current = 3 + clampedSpeed * 0.5;
+      lastMoveRef.current = Date.now();
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('touchmove', onTouchMove);
+    frameRef.current = requestAnimationFrame(animate);
 
     return () => {
-      cancelAnimationFrame(animRef.current);
-      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(frameRef.current);
       window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseleave', onMouseLeave);
       window.removeEventListener('touchmove', onTouchMove);
-      window.removeEventListener('touchend', onTouchEnd);
     };
   }, []);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="absolute inset-0 w-full h-full pointer-events-none z-[1]"
-      style={{ opacity: 0.8 }}
-    />
+    <svg
+      style={{
+        position: 'absolute',
+        width: 0,
+        height: 0,
+        overflow: 'hidden',
+      }}
+      aria-hidden="true"
+    >
+      <defs>
+        <filter
+          id="liquid-distortion"
+          x="-10%"
+          y="-10%"
+          width="120%"
+          height="120%"
+          colorInterpolationFilters="sRGB"
+        >
+          {/* Generate fractal noise texture */}
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.012 0.009"
+            numOctaves={3}
+            seed={3}
+            stitchTiles="stitch"
+            result="noise"
+          />
+          {/* Slide the noise around to create flowing motion */}
+          <feOffset
+            ref={offsetRef}
+            in="noise"
+            dx="0"
+            dy="0"
+            result="flowing-noise"
+          />
+          {/* Displace the actual page content using the flowing noise */}
+          <feDisplacementMap
+            ref={dispRef}
+            in="SourceGraphic"
+            in2="flowing-noise"
+            scale={3}
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+      </defs>
+    </svg>
   );
 };
 
-export default FluidBackground;
+export default LiquidDistortion;

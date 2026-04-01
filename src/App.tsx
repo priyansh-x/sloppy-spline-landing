@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { trackVisit, getVisitCount } from './lib/supabase';
 import ProductThesisPanel from './components/ProductThesisPanel';
-import FluidBackground from './components/FluidBackground';
+import LiquidDistortion from './components/FluidBackground';
 
 const FEED = [
   { user: '@slopcreator', prompt: 'a cat riding a skateboard through neon tokyo', likes: '2.4k', caption: 'this one hit different', image: '/images/0.png' },
@@ -38,8 +38,14 @@ function App() {
       className="relative w-full h-full bg-[#0A0A0A] overflow-hidden"
       onMouseMove={handleMouseMove}
     >
-      {/* ── Fluid interactive background ── */}
-      <FluidBackground />
+      {/* SVG filter definition — zero-size, just registers the filter */}
+      <LiquidDistortion />
+
+      {/* Everything inside this div gets the liquid distortion */}
+      <div
+        className="absolute inset-0"
+        style={{ filter: 'url(#liquid-distortion)' }}
+      >
 
       {/* ── Ambient glow ── */}
       <div
@@ -306,7 +312,9 @@ function App() {
         </span>
       </div>
 
-      {/* ── Product / Thesis panel ── */}
+      </div>{/* end liquid-distortion wrapper */}
+
+      {/* ── Product / Thesis panel — outside filter so it renders clean ── */}
       <AnimatePresence>
         {showMenu && <ProductThesisPanel onClose={() => setShowMenu(false)} />}
       </AnimatePresence>
