@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { trackVisit, getVisitCount } from './lib/supabase';
 import ProductThesisPanel from './components/ProductThesisPanel';
 import LiquidDistortion from './components/FluidBackground';
+import CursorEffects from './components/CursorEffects';
 
 const FEED = [
   { user: '@slopcreator', prompt: 'a cat riding a skateboard through neon tokyo', likes: '2.4k', caption: 'this one hit different', image: '/images/0.png' },
@@ -16,11 +17,23 @@ const FEED = [
 function App() {
   const [showMenu, setShowMenu] = useState(false);
   const [visitCount, setVisitCount] = useState<number | null>(null);
+  const [slopScore, setSlopScore] = useState(0);
+  const [scorePopups, setScorePopups] = useState<{ id: number; x: number; y: number; val: number }[]>([]);
+  const popupIdRef = { current: 0 };
 
   // Track visit + fetch count on mount
   useEffect(() => {
     trackVisit();
     getVisitCount().then(setVisitCount);
+  }, []);
+
+  // Click anywhere on page = +slop score with floating number
+  const handleSlopClick = useCallback((e: React.MouseEvent) => {
+    const points = Math.floor(Math.random() * 5) + 1;
+    setSlopScore(prev => prev + points);
+    const id = ++popupIdRef.current;
+    setScorePopups(prev => [...prev, { id, x: e.clientX, y: e.clientY, val: points }]);
+    setTimeout(() => setScorePopups(prev => prev.filter(p => p.id !== id)), 800);
   }, []);
 
   const mouseX = useMotionValue(0.5);
@@ -37,14 +50,42 @@ function App() {
     <div
       className="relative w-full h-full bg-[#0A0A0A] overflow-hidden"
       onMouseMove={handleMouseMove}
+      onClick={handleSlopClick}
     >
+      {/* Custom cursor + trail + ripples */}
+      <CursorEffects />
+
       {/* SVG filter definition — zero-size, just registers the filter */}
       <LiquidDistortion />
+
+      {/* Scanline overlay — subtle CRT/tech feel */}
+      <div
+        className="absolute inset-0 pointer-events-none z-[50]"
+        style={{
+          background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,212,0.008) 2px, rgba(0,255,212,0.008) 4px)',
+          mixBlendMode: 'overlay',
+        }}
+      />
+
+      {/* Floating score popups */}
+      {scorePopups.map(p => (
+        <div
+          key={p.id}
+          className="fixed pointer-events-none z-[100] text-[#00FFD4] font-black text-sm"
+          style={{
+            left: p.x,
+            top: p.y,
+            animation: 'fadeIn 0.1s ease, floatUp 0.8s ease-out forwards',
+          }}
+        >
+          +{p.val}
+        </div>
+      ))}
 
       {/* Everything inside this div gets the liquid distortion */}
       <div
         className="absolute inset-0"
-        style={{ filter: 'url(#liquid-distortion)' }}
+        style={{ filter: 'url(#liquid-distortion)', willChange: 'filter' }}
       >
 
       {/* ── Ambient glow ── */}
@@ -54,13 +95,14 @@ function App() {
       />
 
       {/* ── SLOPPY wordmark — behind phone ── */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0" style={{ paddingBottom: '8vh' }}>
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-auto select-none z-0" style={{ paddingBottom: '8vh' }}>
         <h1
-          className="text-[24vw] sm:text-[20vw] md:text-[16vw] font-black uppercase leading-none tracking-[0.02em]"
+          className="text-[24vw] sm:text-[20vw] md:text-[16vw] font-black uppercase leading-none tracking-[0.02em] glitch-hover"
           style={{
             color: 'transparent',
             WebkitTextStroke: '2px rgba(0,255,212,0.07)',
             textShadow: '0 0 100px rgba(0,255,212,0.05)',
+            cursor: 'none',
           }}
         >
           SLOPPY
@@ -263,7 +305,7 @@ function App() {
           </div>
       </div>
 
-      {/* Bottom-left — status indicator */}
+      {/* Bottom-left — slop score */}
       <div
         className="absolute bottom-6 left-6 md:bottom-8 md:left-8 z-20 flex items-center gap-2"
         style={{ animation: 'fadeIn 0.4s ease both', animationDelay: '0.8s' }}
@@ -276,7 +318,7 @@ function App() {
           className="text-[8px] tracking-[0.22em] uppercase font-medium mt-[1px]"
           style={{ color: 'rgba(255,255,255,0.35)' }}
         >
-          Building
+          {slopScore > 0 ? `Slop Score: ${slopScore}` : 'Click anywhere'}
         </span>
       </div>
 

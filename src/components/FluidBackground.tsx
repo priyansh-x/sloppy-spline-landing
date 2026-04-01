@@ -1,50 +1,49 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * SVG displacement filter that warps the entire page like liquid.
- * - feTurbulence generates fractal noise
- * - feOffset slides the noise around so it flows organically
- * - feDisplacementMap uses that flowing noise to distort SourceGraphic
- * - Mouse movement speed increases distortion intensity
+ * Performant liquid distortion.
+ *
+ * Key perf decisions:
+ * - feTurbulence noise is STATIC (no feOffset animation) so the browser
+ *   caches the noise texture and only recomputes displacement, not noise.
+ * - numOctaves=2 instead of 3 (halves GPU work).
+ * - setAttribute calls are throttled — only fire when scale actually changes.
+ * - will-change: filter on the wrapper div lets the browser prepare a GPU layer.
  */
 const LiquidDistortion = () => {
-  const offsetRef = useRef<SVGFEOffsetElement>(null);
   const dispRef = useRef<SVGFEDisplacementMapElement>(null);
   const frameRef = useRef(0);
-  const scaleRef = useRef(3);
-  const targetScaleRef = useRef(3);
+  const scaleRef = useRef(0);
+  const targetScaleRef = useRef(0);
   const lastMoveRef = useRef(0);
   const lastX = useRef(0);
   const lastY = useRef(0);
+  const lastSetScale = useRef(-1);
 
   useEffect(() => {
-    let time = 0;
-
     const animate = () => {
-      time += 0.012;
-
-      const offset = offsetRef.current;
       const disp = dispRef.current;
-      if (!offset || !disp) {
+      if (!disp) {
         frameRef.current = requestAnimationFrame(animate);
         return;
       }
 
-      // Flow the noise pattern in a lissajous-like path
-      const dx = Math.sin(time * 0.23) * 50 + Math.cos(time * 0.61) * 25;
-      const dy = Math.cos(time * 0.17) * 40 + Math.sin(time * 0.43) * 20;
-      offset.setAttribute('dx', String(dx));
-      offset.setAttribute('dy', String(dy));
-
-      // Decay distortion when mouse stops
+      // Decay when mouse idle
       const now = Date.now();
-      if (now - lastMoveRef.current > 120) {
-        targetScaleRef.current = 3; // subtle baseline wobble
+      if (now - lastMoveRef.current > 80) {
+        targetScaleRef.current *= 0.92; // fast decay
+        if (targetScaleRef.current < 0.5) targetScaleRef.current = 0;
       }
 
-      // Smooth interpolation toward target
-      scaleRef.current += (targetScaleRef.current - scaleRef.current) * 0.05;
-      disp.setAttribute('scale', String(scaleRef.current));
+      // Fast interpolation — snappy response
+      scaleRef.current += (targetScaleRef.current - scaleRef.current) * 0.18;
+
+      // Only touch the DOM when value actually changes (avoid forced repaints)
+      const rounded = Math.round(scaleRef.current * 10) / 10;
+      if (rounded !== lastSetScale.current) {
+        disp.setAttribute('scale', String(rounded));
+        lastSetScale.current = rounded;
+      }
 
       frameRef.current = requestAnimationFrame(animate);
     };
@@ -56,9 +55,9 @@ const LiquidDistortion = () => {
       lastX.current = e.clientX;
       lastY.current = e.clientY;
 
-      // Scale distortion with mouse velocity — fast = more warp
-      const clampedSpeed = Math.min(speed, 60);
-      targetScaleRef.current = 3 + clampedSpeed * 0.5;
+      // More responsive: higher multiplier, higher cap
+      const clampedSpeed = Math.min(speed, 80);
+      targetScaleRef.current = clampedSpeed * 0.7;
       lastMoveRef.current = Date.now();
     };
 
@@ -70,13 +69,13 @@ const LiquidDistortion = () => {
       lastX.current = touch.clientX;
       lastY.current = touch.clientY;
 
-      const clampedSpeed = Math.min(speed, 60);
-      targetScaleRef.current = 3 + clampedSpeed * 0.5;
+      const clampedSpeed = Math.min(speed, 80);
+      targetScaleRef.current = clampedSpeed * 0.7;
       lastMoveRef.current = Date.now();
     };
 
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('touchmove', onTouchMove);
+    window.addEventListener('mousemove', onMouseMove, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
     frameRef.current = requestAnimationFrame(animate);
 
     return () => {
@@ -88,46 +87,33 @@ const LiquidDistortion = () => {
 
   return (
     <svg
-      style={{
-        position: 'absolute',
-        width: 0,
-        height: 0,
-        overflow: 'hidden',
-      }}
+      style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}
       aria-hidden="true"
     >
       <defs>
         <filter
           id="liquid-distortion"
-          x="-10%"
-          y="-10%"
-          width="120%"
-          height="120%"
+          x="-5%"
+          y="-5%"
+          width="110%"
+          height="110%"
           colorInterpolationFilters="sRGB"
         >
-          {/* Generate fractal noise texture */}
+          {/* Static noise — browser caches this, no per-frame recompute */}
           <feTurbulence
             type="fractalNoise"
-            baseFrequency="0.012 0.009"
-            numOctaves={3}
-            seed={3}
+            baseFrequency="0.015 0.012"
+            numOctaves={2}
+            seed={5}
             stitchTiles="stitch"
             result="noise"
           />
-          {/* Slide the noise around to create flowing motion */}
-          <feOffset
-            ref={offsetRef}
-            in="noise"
-            dx="0"
-            dy="0"
-            result="flowing-noise"
-          />
-          {/* Displace the actual page content using the flowing noise */}
+          {/* Only scale changes per-frame (cheap) */}
           <feDisplacementMap
             ref={dispRef}
             in="SourceGraphic"
-            in2="flowing-noise"
-            scale={3}
+            in2="noise"
+            scale={0}
             xChannelSelector="R"
             yChannelSelector="G"
           />
