@@ -75,10 +75,11 @@ const Footer = () => {
               ))}
             </div>
             <a
-              href="#early-access"
-              className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#00FFD4]/60 hover:text-[#00FFD4] transition-colors"
+              href="/Sloppy.apk"
+              download="Sloppy.apk"
+              className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#00FFD4]/60 hover:text-[#00FFD4] transition-colors no-underline"
             >
-              Get Early Access →
+              Download App →
             </a>
           </div>
         </div>

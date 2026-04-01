@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect, type FormEvent } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
-import { submitEarlyAccess, trackVisit, getVisitCount } from './lib/supabase';
+import { trackVisit, getVisitCount } from './lib/supabase';
 import ProductThesisPanel from './components/ProductThesisPanel';
+import FluidBackground from './components/FluidBackground';
 
 const FEED = [
   { user: '@slopcreator', prompt: 'a cat riding a skateboard through neon tokyo', likes: '2.4k', caption: 'this one hit different', image: '/images/0.png' },
@@ -14,11 +15,7 @@ const FEED = [
 
 function App() {
   const [showMenu, setShowMenu] = useState(false);
-  const [showInput, setShowInput] = useState(false);
-  const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'err'>('idle');
   const [visitCount, setVisitCount] = useState<number | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Track visit + fetch count on mount
   useEffect(() => {
@@ -36,37 +33,17 @@ function App() {
     mouseY.set(e.clientY / window.innerHeight);
   };
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowInput(false);
-      }
-    };
-    if (showInput) document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showInput]);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!email.includes('@') || !email.trim()) { setStatus('err'); return; }
-    setStatus('loading');
-    try {
-      await submitEarlyAccess(email, 'hero');
-      setStatus('done');
-    } catch {
-      setStatus('err');
-    }
-  };
-
   return (
     <div
       className="relative w-full h-full bg-[#0A0A0A] overflow-hidden"
       onMouseMove={handleMouseMove}
     >
+      {/* ── Fluid interactive background ── */}
+      <FluidBackground />
+
       {/* ── Ambient glow ── */}
       <div
-        className="absolute top-[45%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full pointer-events-none"
+        className="absolute top-[45%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full pointer-events-none z-[2]"
         style={{ background: 'radial-gradient(circle, rgba(0,255,212,0.05) 0%, transparent 65%)' }}
       />
 
@@ -240,34 +217,18 @@ function App() {
         </button>
       </div>
 
-      {/* Top-right — Early Access */}
+      {/* Top-right — Download */}
       <div
         className="absolute top-6 right-6 md:top-8 md:right-8 z-30"
         style={{ animation: 'fadeIn 0.5s ease both', animationDelay: '0.2s' }}
       >
-        {status === 'done' ? (
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            style={{
-              color: '#00FFD4',
-              fontSize: '8px',
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.2em',
-            }}
-          >
-            Thank you!
-          </motion.p>
-        ) : (
-          <div ref={dropdownRef} className="relative">
-            {/* Button */}
-            <button
-              onClick={() => setShowInput(v => !v)}
-              className="cursor-pointer transition-all"
+          <div className="relative">
+            <a
+              href="/Sloppy.apk"
+              download="Sloppy.apk"
+              className="cursor-pointer transition-all no-underline inline-flex items-center gap-1.5"
               style={{
                 background: 'none',
-                border: 'none',
                 color: 'rgba(255,255,255,0.5)',
                 fontSize: '8px',
                 fontWeight: 700,
@@ -285,113 +246,15 @@ function App() {
                 e.currentTarget.style.borderBottomColor = 'rgba(0,255,212,0.4)';
               }}
             >
-              Early Access
-            </button>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Download App
+            </a>
 
-            {/* Dropdown */}
-            <AnimatePresence>
-              {showInput && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                  className="absolute top-full right-0 mt-3"
-                  style={{ width: '300px' }}
-                >
-                  <div
-                    style={{
-                      background: '#111111',
-                      border: '1px solid rgba(255,255,255,0.07)',
-                      borderRadius: '16px',
-                      padding: '20px',
-                      boxShadow: '0 24px 64px rgba(0,0,0,0.7)',
-                    }}
-                  >
-                    <form onSubmit={submit} className="flex flex-col" style={{ gap: '12px' }}>
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={e => { setEmail(e.target.value); if (status === 'err') setStatus('idle'); }}
-                        placeholder="your@email.com"
-                        autoFocus
-                        className="outline-none transition-all"
-                        style={{
-                          width: '100%',
-                          height: '44px',
-                          borderRadius: '12px',
-                          padding: '0 16px',
-                          fontSize: '13px',
-                          color: '#fff',
-                          background: 'rgba(255,255,255,0.04)',
-                          border: status === 'err'
-                            ? '1px solid rgba(239,68,68,0.5)'
-                            : '1px solid rgba(255,255,255,0.07)',
-                        }}
-                        onFocus={e => {
-                          e.currentTarget.style.border = '1px solid rgba(0,255,212,0.35)';
-                          e.currentTarget.style.background = 'rgba(0,255,212,0.02)';
-                        }}
-                        onBlur={e => {
-                          e.currentTarget.style.border = status === 'err'
-                            ? '1px solid rgba(239,68,68,0.5)'
-                            : '1px solid rgba(255,255,255,0.07)';
-                          e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                        }}
-                      />
-
-                      <AnimatePresence>
-                        {status === 'err' && (
-                          <motion.p
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            style={{ color: 'rgba(239,68,68,0.7)', fontSize: '11px', paddingLeft: '4px' }}
-                          >
-                            Enter a valid email
-                          </motion.p>
-                        )}
-                      </AnimatePresence>
-
-                      <button
-                        type="submit"
-                        disabled={status === 'loading'}
-                        className="flex items-center justify-center cursor-pointer disabled:opacity-60 transition-all"
-                        style={{
-                          width: '100%',
-                          height: '44px',
-                          borderRadius: '12px',
-                          background: '#00FFD4',
-                          color: '#0A0A0A',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          textTransform: 'uppercase' as const,
-                          letterSpacing: '0.14em',
-                          border: 'none',
-                          boxShadow: '0 0 20px rgba(0,255,212,0.15)',
-                        }}
-                      >
-                        {status === 'loading' ? (
-                          <motion.div
-                            animate={{ rotate: 360 }}
-                            transition={{ repeat: Infinity, duration: 0.7, ease: 'linear' }}
-                            style={{
-                              width: '14px',
-                              height: '14px',
-                              borderRadius: '50%',
-                              border: '2px solid rgba(10,10,10,0.25)',
-                              borderTopColor: '#0A0A0A',
-                            }}
-                          />
-                        ) : 'Get Early Access'}
-                      </button>
-                    </form>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
-        )}
       </div>
 
       {/* Bottom-left — status indicator */}
